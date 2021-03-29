@@ -25,6 +25,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <vector>
 
 #include "astcenccli_internal.h"
 
@@ -35,6 +36,30 @@
 /*******************************************************************
 Image load and store through the stb_iamge and tinyexr libraries
 *******************************************************************/
+
+static std::vector<uint8_t> read_file_to_memory(const char* filename) {
+	std::fstream fs;
+
+	fs.open(filename, std::ios_base::in | std::ios_base::binary | std::ios_base::ate);
+	if (!fs.is_open()) {
+		printf("ERROR: Failed to open file for reading %s (%s)\n", filename, std::strerror(errno));
+		return {};
+	}
+
+	std::streamsize size = fs.tellg();
+
+	fs.seekg(0, std::ios::beg);
+
+	std::vector<uint8_t> buffer(size);
+	if (!fs.read(reinterpret_cast<char *>(buffer.data()), size))
+	{
+		printf("ERROR: Failed to read file content %s (%s)\n", filename, std::strerror(errno));
+		return {};
+	}
+	fs.close();
+
+	return buffer;
+}
 
 static astcenc_image* load_image_with_tinyexr(
 	const char* filename,
@@ -68,11 +93,16 @@ static astcenc_image* load_image_with_stb(
 	bool& is_hdr,
 	unsigned int& component_count
 ) {
+	std::vector<uint8_t> buffer = read_file_to_memory(filename);
+	if (buffer.empty()) {
+		return nullptr;
+	}
+
 	int dim_x, dim_y;
 
 	if (stbi_is_hdr(filename))
 	{
-		float* data = stbi_loadf(filename, &dim_x, &dim_y, nullptr, STBI_rgb_alpha);
+		float* data = stbi_loadf_from_memory(buffer.data(), buffer.size(), &dim_x, &dim_y, nullptr, STBI_rgb_alpha);
 		if (data)
 		{
 			astcenc_image* img = astc_img_from_floatx4_array(data, dim_x, dim_y, y_flip);
@@ -84,7 +114,7 @@ static astcenc_image* load_image_with_stb(
 	}
 	else
 	{
-		uint8_t* data = stbi_load(filename, &dim_x, &dim_y, nullptr, STBI_rgb_alpha);
+		uint8_t* data = stbi_load_from_memory(buffer.data(), buffer.size(), &dim_x, &dim_y, nullptr, STBI_rgb_alpha);
 		if (data)
 		{
 			astcenc_image* img = astc_img_from_unorm8x4_array(data, dim_x, dim_y, y_flip);
